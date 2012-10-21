@@ -16,3 +16,6 @@ And probably a mass of other things
 
 ##Contribution
 I'd love it, and that's why this is here. I'd prefer it you choose to do some development that you regularly use merge requests. Further, can we focus on getting the basics put together - and not worry too much about getting the most efficient code, it needs to be very readible :)
+
+##How to Use
+For those who are wanting to use this (in it's current state), you need to have python3 installed. It will not work with python2. However, really, this isn't in a usable state atm :/
