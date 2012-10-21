@@ -2,6 +2,7 @@ import hashlib
 import os
 import sqlite3 as lite
 import sys
+import shutil
 
 def checksum(filepath):
     fh = open(filepath, 'rb')
@@ -21,6 +22,8 @@ def getfilelisting(basepath):
     for root, dirs, files in os.walk(os.path.normpath(basepath), topdown=False):
         for name in files:
             try:
+                if "delete" in root:
+                    next()
                 currentfile=os.path.join(root, name)
                 filedetails=(name,currentfile,os.stat(currentfile).st_size)
                 filelist.append(filedetails)
@@ -30,12 +33,12 @@ def getfilelisting(basepath):
     return filelist
 
 def update_progress(amtDone):
-    sys.stdout.write("\rProgress: [{0:50s}] {1:.1f}%".format('#' * int(amtDone * 50), amtDone * 100))
+    sys.stdout.write("\nProgress: [{0:50s}] {1:.1f}%".format('#' * int(amtDone * 50), amtDone * 100))
     sys.stdout.flush()
 
 ## Functions now defined, do some work
 print('Achievement get - Using pyDupe\n')
-searchdir = ['F:/PDF Library',"Z:/"]
+searchdir = ['F:/PDF Library']
                      
 
 
@@ -61,6 +64,7 @@ with con:
     cur = con.cursor()
     cur.execute("create table if not exists filelisting (filename text, filepath text, filesize INT)")
     cur.execute("create table if not exists filehashes (filepath text, hash)")
+    cur.execute("drop table if exists internaldups")
 
     #Update the filelisting cache        
     try:
@@ -70,6 +74,7 @@ with con:
 
 
         cur.executemany("INSERT INTO filelisting VALUES(?, ?, ?)",filelisting)
+#        cur.execute("delete from filelisting where filepath like ? || 'delete%'",[os.path.normpath(sdir)])
         print('\nInfo - Inserted new filelisting\n')
 
         #only commit if there was no error in the above process
@@ -107,39 +112,28 @@ with con:
             
         count=0
         for listedfile in filestohash:
+            count = count+1
             update_progress(count/len(filestohash))
             filehash = (listedfile[0],checksum(listedfile[0]))
             cur.execute("INSERT INTO filehashes VALUES(?, ?)",filehash)
             con.commit()
-            count = count+1
         print('\nAchievement get - All files hashed')
     except:
         print('Errd - File hash failed')
 
     print('Achievement get - SQL Basics Done')
 
-    internaldups = """select count(filename) from filelisting
-                      join filehashes on filelisting.filepath = filehashes.filepath
-                      where filelisting.filepath like ? || '%'
-                      and filelisting.filepath in
-                          (select filepath from filehashes
-                           where hash in
-                               (select hash from
-                                   (select filepath, hash
-                                    from filehashes
-                                    where filepath in
-                                        (select filepath from filelisting where filepath like ? || '%')
-                                    )
-                                group by hash having count(hash)>1)
-                               )
-                      order by hash"""
+    internaldupsq = """select filename, filelisting.filepath, hash from filelisting join filehashes on filelisting.filepath = filehashes.filepath where filelisting.filepath like ? || '%' and filelisting.filepath in (select filepath from filehashes where hash in (select hash from (select filepath, hash from filehashes where filepath in (select filepath from filelisting where filepath like ? || '%'))group by hash having count(hash)>1)) order by hash"""
     for sdir in searchdir:
-        test2 = cur.execute(internaldups,[os.path.normpath(sdir), os.path.normpath(sdir)]) #sdir is used twice
-        for row in test2:
-            try:
-                print('There are',row[0],'files in',sdir,'that will be skipped')
-            except:
-                pass
+        internaldups = list()
+        cur.execute(internaldupsq,[os.path.normpath(sdir), os.path.normpath(sdir)]) #sdir is used twice
+        internaldups = cur.fetchall()
+        print('There are',len(internaldups),'files in',sdir,'that will be skipped')
+        cur.execute('create table if not exists internaldups (filename text, filepath text, hash)')
+        cur.executemany("INSERT INTO internaldups VALUES(?, ?, ?)",internaldups)
+        con.commit()
+        
+        
         
         
 
@@ -153,12 +147,17 @@ with con:
                 print('[',count,'] = ',sdir)
             try:
                 deleteopt=input('\nPlease select the folder where duplicates will be deleted [x]:')
-                print('You have selected',searchdir[(int(deleteopt)-1)],end='\t') #this will err if out of bounds
+                testoob = searchdir[(int(deleteopt)-1)]
                 break
             except:
                 print(deleteopt,'Was not in the given range, please select one that is')
 
 
+        deletelist = list()
+        cur.execute("select filepath from filelisting where filepath in (select filepath from filehashes where hash in (select hash from filehashes where hash not in (select hash from internaldups) group by hash having (count(hash)>1)) and filepath like ? || '%')",[os.path.normpath(searchdir[(int(deleteopt)-1)])])
+        deletelist = cur.fetchall()
+        print('\nThere are',len(deletelist),'files to be deleted\n')
+        print('You have selected',searchdir[(int(deleteopt)-1)],end='\t')
         confirm = input('....are you sure you want to?')
 
         if confirm=='n':
@@ -170,16 +169,28 @@ with con:
 
 
         print(confirm,'Was not a valid choice (sorry), please use [y]es or [n]o\n')
-        
-        
-    
-    print('Moving files to trash')
+
+
+    deletepath = os.path.join(os.path.normpath(searchdir[(int(deleteopt)-1)]),'delete/')
+
+    try:
+        os.mkdir(deletepath)
+    except:
+        pass
+
+    count = 0
+    for src in deletelist:
+        count = count+1
+        update_progress(count/len(deletelist))
+        try:
+            shutil.move(src[0],deletepath)
+        except:
+            pass
 
 
 con.close()
-
-  
 print('Done')
+
 
 #this query will get filenames which have a hash
 #select filename, hash from filelisting join filehashes on filelisting.filepath = filehashes.filepath
@@ -198,8 +209,12 @@ print('Done')
 
 #cur.execute("DROP TABLE IF EXISTS filelisting")
 
-
-
+#select filepath from filelisting where filepath in (
+#select filepath from filehashes where hash in (
+#select hash from filehashes
+#where hash not in (select hash from internaldups)
+#group by hash having (count(hash)>1)
+#) and filepath like 'F%')
 
 
 #Cou de grace, find duplicate files in a folder and show both of them
@@ -219,6 +234,8 @@ print('Done')
 #         group by hash having count(hash)>1)
 #     )
 #order by hash
+
+
 
 
 
