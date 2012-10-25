@@ -74,7 +74,6 @@ with con:
 
 
         cur.executemany("INSERT INTO filelisting VALUES(?, ?, ?)",filelisting)
-#        cur.execute("delete from filelisting where filepath like ? || 'delete%'",[os.path.normpath(sdir)])
         print('\nInfo - Inserted new filelisting\n')
 
         #only commit if there was no error in the above process
@@ -146,7 +145,7 @@ with con:
                 count=count+1
                 print('[',count,'] = ',sdir)
             try:
-                deleteopt=input('\nPlease select the folder where duplicates will be deleted [x]:')
+                deleteopt=input('\nPlease select the folder where duplicates will be deleted [x]: ')
                 testoob = searchdir[(int(deleteopt)-1)]
                 break
             except:
@@ -154,11 +153,11 @@ with con:
 
 
         deletelist = list()
-        cur.execute("select filepath from filelisting where filepath in (select filepath from filehashes where hash in (select hash from filehashes where hash not in (select hash from internaldups) group by hash having (count(hash)>1)) and filepath like ? || '%')",[os.path.normpath(searchdir[(int(deleteopt)-1)])])
+        cur.execute("select filepath from filelisting where filepath in (select filepath from filehashes where hash in (select hash from filehashes where hash not in (select hash from internaldups) and filepath in (select filepath from filelisting) group by hash having (count(hash)>1)) and filepath like ? || '%')",[os.path.normpath(searchdir[(int(deleteopt)-1)])])
         deletelist = cur.fetchall()
         print('\nThere are',len(deletelist),'files to be deleted\n')
         print('You have selected',searchdir[(int(deleteopt)-1)],end='\t')
-        confirm = input('....are you sure you want to?')
+        confirm = input('....are you sure you want to? [y/n]: ')
 
         if confirm=='n':
             print('\n\n\nQuitting')
@@ -218,6 +217,8 @@ print('Done')
 
 
 #Cou de grace, find duplicate files in a folder and show both of them
+#These should be avoided because it really should require the user to
+#select which one they wish to keep
 
 #select filename, filelisting.filepath, hash from filelisting
 #join filehashes on filelisting.filepath = filehashes.filepath
