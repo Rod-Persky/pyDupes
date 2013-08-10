@@ -156,7 +156,7 @@ with con:
         cur.execute("select filepath from filelisting where filepath in (select filepath from filehashes where hash in (select hash from filehashes where hash not in (select hash from internaldups) and filepath in (select filepath from filelisting) group by hash having (count(hash)>1)) and filepath like ? || '%')",[os.path.normpath(searchdir[(int(deleteopt)-1)])])
         deletelist = cur.fetchall()
         print('\nThere are',len(deletelist),'files to be deleted\n')
-        print('You have selected',searchdir[(int(deleteopt)-1)],end='\t')
+        #print('You have selected',searchdir[(int(deleteopt)-1)],end='\t')
         confirm = input('....are you sure you want to? [y/n]: ')
 
         if confirm=='n':
